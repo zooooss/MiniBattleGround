@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <tchar.h>
 #include <math.h>
+#include <time.h>
 
 #pragma comment(lib, "Msimg32.lib")
 
@@ -13,6 +14,7 @@
 // 타이머 ID
 #define TIMER_MOVE 1
 #define TIMER_ZONE 2
+
 
 // 월드 맵 크기 (실제 전체 맵)
 int worldWidth = 2000;
@@ -37,6 +39,12 @@ float safeRadius = 200.0f;
 float safeShrinkSpeed = 0.15f;
 int secondsSurvived = 0;
 int shrinkTick = 0;
+
+// 자기장 관련 변수
+int zoneStartCountdown = 3;  // 자기장 생성까지 남은 시간
+bool zoneActive = false;      // 자기장 활성화 여부
+int zoneCenterX = 0;          // 자기장 중심 X (랜덤)
+int zoneCenterY = 0;          // 자기장 중심 Y (랜덤)
 
 // 영역(Rect)
 RECT hpRect = { 0,0,800,60 };
@@ -64,22 +72,184 @@ HDC hMinimapDC = NULL;
 //미니맵 전용 사진
 HBITMAP hMinimapBmp = (HBITMAP)LoadImage(NULL, _T("minimap.bmp"), IMAGE_BITMAP, 150, 150, LR_LOADFROMFILE);
 
+// 총알 구조체
+struct Bullet {
+    float x, y;           // 월드 좌표
+    float vx, vy;         // 속도
+    bool active;          // 활성화 여부
+};
+
+// 아이템 구조체
+struct Item {
+    int x, y;             // 월드 좌표
+    int type;             // 0: 구급상자, 1: 에너지드링크
+    bool active;
+};
+
+// 총알 & 아이템 배열
+#define MAX_BULLETS 50
+#define MAX_ITEMS 20
+Bullet bullets[MAX_BULLETS];
+Item items[MAX_ITEMS];
+
+// 플레이어 속도
+int playerSpeed = 6;
+int speedBoostTimer = 0;  // 속도 증가 지속 시간
+
+// 이미지 핸들 (기존 이미지 핸들 근처에 추가)
+HBITMAP hBulletBmp = NULL;
+HBITMAP hMedkitBmp = NULL;
+HBITMAP hEnergyDrinkBmp = NULL;
+
+// 총알 발사 타이머
+#define TIMER_BULLET_SPAWN 3
+int bulletSpawnTick = 0;
 
 // 유틸 함수
 double Distance(int x1, int y1, int x2, int y2) {
     return sqrt((double)(x1 - x2) * (x1 - x2) + (double)(y1 - y2) * (y1 - y2));
 }
 
+// 총알 생성 (플레이어를 향해)
+void SpawnBullet() {
+    // 빈 슬롯 찾기
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        if (!bullets[i].active) {
+            // 맵 가장자리에서 랜덤 생성
+            int edge = rand() % 4;  // 0:상, 1:하, 2:좌, 3:우
+
+            if (edge == 0) {  // 상단
+                bullets[i].x = (float)(rand() % worldWidth);
+                bullets[i].y = 0;
+            }
+            else if (edge == 1) {  // 하단
+                bullets[i].x = (float)(rand() % worldWidth);
+                bullets[i].y = (float)worldHeight;
+            }
+            else if (edge == 2) {  // 좌측
+                bullets[i].x = 0;
+                bullets[i].y = (float)(rand() % worldHeight);
+            }
+            else {  // 우측
+                bullets[i].x = (float)worldWidth;
+                bullets[i].y = (float)(rand() % worldHeight);
+            }
+
+            // 플레이어를 향하는 방향 계산
+            float dx = playerX - bullets[i].x;
+            float dy = playerY - bullets[i].y;
+            float dist = sqrt(dx * dx + dy * dy);
+
+            if (dist > 0) {
+                bullets[i].vx = (dx / dist) * 8.0f;  // 속도
+                bullets[i].vy = (dy / dist) * 8.0f;
+            }
+
+            bullets[i].active = true;
+            break;
+        }
+    }
+}
+
+// 총알 업데이트
+void UpdateBullets() {
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        if (bullets[i].active) {
+            bullets[i].x += bullets[i].vx;
+            bullets[i].y += bullets[i].vy;
+
+            // 맵 밖으로 나가면 비활성화
+            if (bullets[i].x < 0 || bullets[i].x > worldWidth ||
+                bullets[i].y < 0 || bullets[i].y > worldHeight) {
+                bullets[i].active = false;
+            }
+
+            // 플레이어와 충돌 체크
+            float dx = bullets[i].x - playerX;
+            float dy = bullets[i].y - playerY;
+            float dist = sqrt(dx * dx + dy * dy);
+
+            if (dist < 20) {  // 충돌
+                // 머리(상단 1/3) vs 몸통
+                if (dy < -8) {  // 머리
+                    hp -= 30;
+                }
+                else {  // 몸통
+                    hp -= 15;
+                }
+                if (hp < 0) hp = 0;
+                bullets[i].active = false;
+            }
+        }
+    }
+}
+
+// 아이템 획득 체크
+void CheckItemPickup() {
+    for (int i = 0; i < MAX_ITEMS; i++) {
+        if (items[i].active) {
+            float dx = (float)(items[i].x - playerX);
+            float dy = (float)(items[i].y - playerY);
+            float dist = sqrt(dx * dx + dy * dy);
+
+            if (dist < 25) {  // 획득 범위
+                if (items[i].type == 0) {  // 구급상자
+                    hp += 15;
+                    if (hp > 100) hp = 100;
+                }
+                else {  // 에너지드링크
+                    playerSpeed = 15;
+                    speedBoostTimer = 5;  // 5초간 지속
+                }
+                items[i].active = false;
+            }
+        }
+    }
+}
+
 void InitGame() {
     // 플레이어는 월드 맵 중심에서 시작
-    playerX = worldWidth / 2;   // 1000
-    playerY = worldHeight / 2;  // 1000
+    playerX = worldWidth / 2;
+    playerY = worldHeight / 2;
     playerSize = 12;
     hp = 100;
-    // 자기장도 월드 맵 기준
-    safeRadius = worldWidth / 4;  // 500
+    playerSpeed = 6;
+    speedBoostTimer = 0;
+
+    // 자기장 초기화
+    zoneStartCountdown = 3;
+    zoneActive = false;
+
+    int minX = worldWidth / 4;
+    int maxX = worldWidth * 3 / 4;
+    int minY = worldHeight / 4;
+    int maxY = worldHeight * 3 / 4;
+
+    zoneCenterX = minX + (rand() % (maxX - minX));
+    zoneCenterY = minY + (rand() % (maxY - minY));
+
+    safeRadius = worldWidth / 4;
     secondsSurvived = 0;
     shrinkTick = 0;
+    bulletSpawnTick = 0;
+
+    // 총알 초기화
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        bullets[i].active = false;
+    }
+
+    // 아이템 랜덤 생성 (10개)
+    for (int i = 0; i < MAX_ITEMS; i++) {
+        if (i < 10) {
+            items[i].x = 100 + (rand() % (worldWidth - 200));
+            items[i].y = 100 + (rand() % (worldHeight - 200));
+            items[i].type = rand() % 2;  // 0: 구급상자, 1: 에너지드링크
+            items[i].active = true;
+        }
+        else {
+            items[i].active = false;
+        }
+    }
 }
 
 // 그라데이션 원 그리기
@@ -118,7 +288,6 @@ void InitMinimapBuffer(int mapSize) {
     SelectObject(hMinimapDC, hMinimapBuffer);
     ReleaseDC(NULL, hdc);
 }
-// 미니맵 백버퍼에 그림
 void RenderMinimapBuffer() {
     if (!hMinimapDC) return;
     int mapSize = 150;
@@ -132,18 +301,55 @@ void RenderMinimapBuffer() {
         DeleteDC(imgDC);
     }
 
-    // 2. 자기장 - 월드 맵 기준
-    float zoneRatio = safeRadius / (worldWidth / 2.0f);
-    int zoneR = (int)(zoneRatio * (mapSize / 2.0f));
-    HPEN zonePen = CreatePen(PS_SOLID, 3, RGB(0, 120, 255));
-    HPEN oldPen = (HPEN)SelectObject(hMinimapDC, zonePen);
-    SelectObject(hMinimapDC, GetStockObject(NULL_BRUSH));
-    Ellipse(hMinimapDC, mapSize / 2 - zoneR, mapSize / 2 - zoneR,
-        mapSize / 2 + zoneR, mapSize / 2 + zoneR);
-    SelectObject(hMinimapDC, oldPen);
-    DeleteObject(zonePen);
+    // 2. 아이템 표시
+    for (int i = 0; i < MAX_ITEMS; i++) {
+        if (items[i].active) {
+            float ix = (items[i].x / (float)worldWidth) * mapSize;
+            float iy = (items[i].y / (float)worldHeight) * mapSize;
 
-    // 3. 플레이어 위치 - 월드 맵 기준
+            COLORREF color = (items[i].type == 0) ? RGB(0, 255, 0) : RGB(255, 150, 0);
+            HBRUSH itemBrush = CreateSolidBrush(color);
+            HBRUSH oldBrush = (HBRUSH)SelectObject(hMinimapDC, itemBrush);
+            Ellipse(hMinimapDC, (int)ix - 2, (int)iy - 2, (int)ix + 2, (int)iy + 2);
+            SelectObject(hMinimapDC, oldBrush);
+            DeleteObject(itemBrush);
+        }
+    }
+
+    // 3. 총알 표시
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        if (bullets[i].active) {
+            float bx = (bullets[i].x / (float)worldWidth) * mapSize;
+            float by = (bullets[i].y / (float)worldHeight) * mapSize;
+
+            HBRUSH bulletBrush = CreateSolidBrush(RGB(255, 0, 0));
+            HBRUSH oldBrush = (HBRUSH)SelectObject(hMinimapDC, bulletBrush);
+            Ellipse(hMinimapDC, (int)bx - 1, (int)by - 1, (int)bx + 1, (int)by + 1);
+            SelectObject(hMinimapDC, oldBrush);
+            DeleteObject(bulletBrush);
+        }
+    }
+
+    // 4. 자기장
+    if (zoneActive) {
+        float zoneCenterMapX = (zoneCenterX / (float)worldWidth) * mapSize;
+        float zoneCenterMapY = (zoneCenterY / (float)worldHeight) * mapSize;
+        float zoneRadiusRatio = safeRadius / (float)worldWidth;
+        int zoneR = (int)(zoneRadiusRatio * mapSize);
+
+        HPEN zonePen = CreatePen(PS_SOLID, 3, RGB(0, 120, 255));
+        HPEN oldPen = (HPEN)SelectObject(hMinimapDC, zonePen);
+        SelectObject(hMinimapDC, GetStockObject(NULL_BRUSH));
+        Ellipse(hMinimapDC,
+            (int)(zoneCenterMapX - zoneR),
+            (int)(zoneCenterMapY - zoneR),
+            (int)(zoneCenterMapX + zoneR),
+            (int)(zoneCenterMapY + zoneR));
+        SelectObject(hMinimapDC, oldPen);
+        DeleteObject(zonePen);
+    }
+
+    // 5. 플레이어
     float px = (playerX / (float)worldWidth) * mapSize;
     float py = (playerY / (float)worldHeight) * mapSize;
 
@@ -154,13 +360,13 @@ void RenderMinimapBuffer() {
     DeleteObject(pBrush);
 
     HPEN playerPen = CreatePen(PS_SOLID, 2, RGB(0, 0, 0));
-    oldPen = (HPEN)SelectObject(hMinimapDC, playerPen);
+    HPEN oldPen = (HPEN)SelectObject(hMinimapDC, playerPen);
     SelectObject(hMinimapDC, GetStockObject(NULL_BRUSH));
     Ellipse(hMinimapDC, (int)px - 5, (int)py - 5, (int)px + 5, (int)py + 5);
     SelectObject(hMinimapDC, oldPen);
     DeleteObject(playerPen);
 
-    // 4. 테두리
+    // 6. 테두리
     HPEN borderPen = CreatePen(PS_SOLID, 2, RGB(80, 90, 75));
     oldPen = (HPEN)SelectObject(hMinimapDC, borderPen);
     SelectObject(hMinimapDC, GetStockObject(NULL_BRUSH));
@@ -171,6 +377,7 @@ void RenderMinimapBuffer() {
 
 // 게임 화면 렌더링
 void RenderGameContents(HDC hdc, RECT client) {
+
     // 백버퍼 생성
     HDC memDC = CreateCompatibleDC(hdc);
     HBITMAP backBuffer = CreateCompatibleBitmap(hdc,
@@ -257,23 +464,87 @@ void RenderGameContents(HDC hdc, RECT client) {
     SelectObject(bgDC, oldBg);
     DeleteDC(bgDC);
 
+    //클리핑 설정
+    HRGN gameRgn = CreateRectRgn(gameRect.left, gameRect.top, gameRect.right, gameRect.bottom);
+    SelectClipRgn(memDC, gameRgn);
+
     // 자기장 - 월드 좌표를 화면 좌표로 변환
     int worldCenterX = worldWidth / 2;
     int worldCenterY = worldHeight / 2;
 
-    int screenZoneCenterX = gameRect.left + (worldCenterX - cameraX);
-    int screenZoneCenterY = gameRect.top + (worldCenterY - cameraY);
+    // 자기장 - 활성화된 경우에만 표시
+    if (zoneActive) {
+        int screenZoneCenterX = gameRect.left + (zoneCenterX - cameraX);
+        int screenZoneCenterY = gameRect.top + (zoneCenterY - cameraY);
 
-    HPEN zonePen = CreatePen(PS_SOLID, 4, RGB(0, 120, 255));
-    oldPen = (HPEN)SelectObject(memDC, zonePen);
-    SelectObject(memDC, GetStockObject(NULL_BRUSH));
-    Ellipse(memDC,
-        screenZoneCenterX - (int)safeRadius,
-        screenZoneCenterY - (int)safeRadius,
-        screenZoneCenterX + (int)safeRadius,
-        screenZoneCenterY + (int)safeRadius);
-    SelectObject(memDC, oldPen);
-    DeleteObject(zonePen);
+        HPEN zonePen = CreatePen(PS_SOLID, 4, RGB(0, 120, 255));
+        oldPen = (HPEN)SelectObject(memDC, zonePen);
+        SelectObject(memDC, GetStockObject(NULL_BRUSH));
+        Ellipse(memDC,
+            screenZoneCenterX - (int)safeRadius,
+            screenZoneCenterY - (int)safeRadius,
+            screenZoneCenterX + (int)safeRadius,
+            screenZoneCenterY + (int)safeRadius);
+        SelectObject(memDC, oldPen);
+        DeleteObject(zonePen);
+    }
+
+    // 클리핑 해제
+    SelectClipRgn(memDC, NULL);
+
+    // 아이템 그리기
+    for (int i = 0; i < MAX_ITEMS; i++) {
+        if (items[i].active) {
+            int screenItemX = gameRect.left + (items[i].x - cameraX);
+            int screenItemY = gameRect.top + (items[i].y - cameraY);
+
+            // 화면 안에 있을 때만 그리기
+            if (screenItemX >= gameRect.left && screenItemX <= gameRect.right &&
+                screenItemY >= gameRect.top && screenItemY <= gameRect.bottom) {
+
+                HBITMAP itemBmp = (items[i].type == 0) ? hMedkitBmp : hEnergyDrinkBmp;
+                if (itemBmp) {
+                    HDC itemDC = CreateCompatibleDC(memDC);
+                    HBITMAP oldItem = (HBITMAP)SelectObject(itemDC, itemBmp);
+
+                    TransparentBlt(memDC,
+                        screenItemX - 12, screenItemY - 12,
+                        24, 24,
+                        itemDC, 0, 0, 24, 24,
+                        RGB(255, 0, 255));
+
+                    SelectObject(itemDC, oldItem);
+                    DeleteDC(itemDC);
+                }
+            }
+        }
+    }
+
+    // 총알 그리기
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        if (bullets[i].active) {
+            int screenBulletX = gameRect.left + ((int)bullets[i].x - cameraX);
+            int screenBulletY = gameRect.top + ((int)bullets[i].y - cameraY);
+
+            if (screenBulletX >= gameRect.left && screenBulletX <= gameRect.right &&
+                screenBulletY >= gameRect.top && screenBulletY <= gameRect.bottom) {
+
+                if (hBulletBmp) {
+                    HDC bulletDC = CreateCompatibleDC(memDC);
+                    HBITMAP oldBullet = (HBITMAP)SelectObject(bulletDC, hBulletBmp);
+
+                    TransparentBlt(memDC,
+                        screenBulletX - 8, screenBulletY - 8,
+                        16, 16,
+                        bulletDC, 0, 0, 16, 16,
+                        RGB(255, 0, 255));
+
+                    SelectObject(bulletDC, oldBullet);
+                    DeleteDC(bulletDC);
+                }
+            }
+        }
+    }
 
     // 플레이어 - 월드 좌표를 화면 좌표로 변환
     int screenPlayerX = gameRect.left + (playerX - cameraX);
@@ -302,6 +573,7 @@ void RenderGameContents(HDC hdc, RECT client) {
     SetTextColor(memDC, RGB(200, 200, 200));
     TCHAR buf[128];
 
+
     TextOut(memDC, infoRect.left + 20, infoRect.top + 20, _T("GAME INFO"), lstrlen(_T("GAME INFO")));
 
     SetTextColor(memDC, RGB(255, 255, 255));
@@ -310,18 +582,39 @@ void RenderGameContents(HDC hdc, RECT client) {
 
     wsprintf(buf, _T("Time: %d sec"), secondsSurvived);
     TextOut(memDC, infoRect.left + 20, infoRect.top + 80, buf, lstrlen(buf));
-
     // 상태 표시
-    double d = Distance(playerX, playerY, worldCenterX, worldCenterY);
-    if (d > safeRadius) {
-        SetTextColor(memDC, RGB(255, 80, 80));
-        TextOut(memDC, infoRect.left + 20, infoRect.top + 110,
-            _T("OUT OF ZONE!"), lstrlen(_T("OUT OF ZONE!")));
+    if (!zoneActive && zoneStartCountdown > 0) {
+        // 카운트다운 표시
+        SetTextColor(memDC, RGB(255, 200, 50));
+        HFONT hBigFont = CreateFont(24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            ANTIALIASED_QUALITY, DEFAULT_PITCH, _T("Arial"));
+        HFONT oldBigFont = (HFONT)SelectObject(memDC, hBigFont);
+
+        wsprintf(buf, _T("ZONE IN: %d"), zoneStartCountdown);
+        TextOut(memDC, infoRect.left + 20, infoRect.top + 140, buf, lstrlen(buf));
+
+        SelectObject(memDC, oldBigFont);
+        DeleteObject(hBigFont);
     }
-    else {
-        SetTextColor(memDC, RGB(100, 255, 100));
-        TextOut(memDC, infoRect.left + 20, infoRect.top + 110,
-            _T("Safe"), lstrlen(_T("Safe")));
+    else if (zoneActive) {
+        double d = Distance(playerX, playerY, zoneCenterX, zoneCenterY);
+        if (d > safeRadius) {
+            SetTextColor(memDC, RGB(255, 80, 80));
+            TextOut(memDC, infoRect.left + 20, infoRect.top + 110,
+                _T("OUT OF ZONE!"), lstrlen(_T("OUT OF ZONE!")));
+        }
+        else {
+            SetTextColor(memDC, RGB(100, 255, 100));
+            TextOut(memDC, infoRect.left + 20, infoRect.top + 110,
+                _T("Safe"), lstrlen(_T("Safe")));
+        }
+    }
+    // 속도 부스트 표시
+    if (speedBoostTimer > 0) {
+        SetTextColor(memDC, RGB(255, 150, 0));
+        wsprintf(buf, _T("SPEED BOOST: %ds"), speedBoostTimer);
+        TextOut(memDC, infoRect.left + 20, infoRect.top + 170, buf, lstrlen(buf));
     }
 
     // 미니맵 타이틀
@@ -500,6 +793,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_CREATE:
         hPlayerBmp = (HBITMAP)LoadImage(NULL, _T("character.bmp"), IMAGE_BITMAP, 32, 32, LR_LOADFROMFILE);
         hBackgroundBmp = (HBITMAP)LoadImage(NULL, _T("background.bmp"), IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);
+        hBulletBmp = (HBITMAP)LoadImage(NULL, _T("tang.bmp"), IMAGE_BITMAP, 16, 16, LR_LOADFROMFILE);
+        hMedkitBmp = (HBITMAP)LoadImage(NULL, _T("heal.bmp"), IMAGE_BITMAP, 24, 24, LR_LOADFROMFILE);
+        hEnergyDrinkBmp = (HBITMAP)LoadImage(NULL, _T("energydrink.bmp"), IMAGE_BITMAP, 24, 24, LR_LOADFROMFILE);
 
         ShowMenuButtons(hWnd, true);
         InitMinimapBuffer(150);
@@ -541,10 +837,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_KEYDOWN:
         if (g_state == STATE_PLAYING) {
             switch (wParam) {
-            case 'W': case 'w': playerY -= 6; break;
-            case 'S': case 's': playerY += 6; break;
-            case 'A': case 'a': playerX -= 6; break;
-            case 'D': case 'd': playerX += 6; break;
+            case 'W': case 'w': playerY -= playerSpeed; break;
+            case 'S': case 's': playerY += playerSpeed; break;
+            case 'A': case 'a': playerX -= playerSpeed; break;
+            case 'D': case 'd': playerX += playerSpeed; break;
             }
 
             // 월드 맵 경계 체크
@@ -560,18 +856,41 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_TIMER:
         if (g_state == STATE_PLAYING) {
             if (wParam == TIMER_ZONE) {
-                shrinkTick++;
                 secondsSurvived++;
-                if (shrinkTick % 3 == 0 && safeRadius > 30) safeRadius -= 8;
 
-                // 월드 맵 중심과 플레이어 거리
-                int worldCenterX = worldWidth / 2;
-                int worldCenterY = worldHeight / 2;
-                double d = Distance(playerX, playerY, worldCenterX, worldCenterY);
+                // 속도 부스트 타이머
+                if (speedBoostTimer > 0) {
+                    speedBoostTimer--;
+                    if (speedBoostTimer == 0) {
+                        playerSpeed = 6;  // 원래 속도로
+                    }
+                }
 
-                if (d > safeRadius) {
-                    hp -= 5;
-                    if (hp < 0) hp = 0;
+                // 자기장 카운트다운
+                if (!zoneActive) {
+                    zoneStartCountdown--;
+                    if (zoneStartCountdown <= 0) {
+                        zoneActive = true;
+                    }
+                }
+                else {
+                    shrinkTick++;
+                    if (shrinkTick % 3 == 0 && safeRadius > 30) {
+                        safeRadius -= 8;
+                    }
+
+                    double d = Distance(playerX, playerY, zoneCenterX, zoneCenterY);
+                    if (d > safeRadius) {
+                        hp -= 5;
+                        if (hp < 0) hp = 0;
+                    }
+                }
+
+                // 총알 생성 (2초마다)
+                bulletSpawnTick++;
+                if (bulletSpawnTick >= 2 && zoneActive) {
+                    SpawnBullet();
+                    bulletSpawnTick = 0;
                 }
 
                 if (hp <= 0) {
@@ -584,11 +903,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 InvalidateRect(hWnd, NULL, TRUE);
             }
             else if (wParam == TIMER_MOVE) {
+                UpdateBullets();
+                CheckItemPickup();
                 InvalidateRect(hWnd, NULL, TRUE);
             }
         }
         return 0;
-
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hWnd, &ps);
@@ -615,6 +935,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (hPlayerBmp) DeleteObject(hPlayerBmp);
         if (hBackgroundBmp) DeleteObject(hBackgroundBmp);
         if (hTreeBmp) DeleteObject(hTreeBmp);
+        if (hBulletBmp) DeleteObject(hBulletBmp);
+        if (hMedkitBmp) DeleteObject(hMedkitBmp);
+        if (hEnergyDrinkBmp) DeleteObject(hEnergyDrinkBmp);
         if (hMinimapBuffer) DeleteObject(hMinimapBuffer);
         if (hMinimapDC) DeleteDC(hMinimapDC);
         PostQuitMessage(0);
@@ -628,6 +951,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     LPTSTR lpCmdLine, int nCmdShow) {
     g_hInst = hInstance;
+
+    // 랜덤 시드 초기화
+    srand((unsigned int)time(NULL));
 
     WNDCLASS wc = { 0 };
     wc.lpfnWndProc = WndProc;
