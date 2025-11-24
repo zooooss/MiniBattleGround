@@ -1,37 +1,37 @@
-#include <windows.h>
+ï»¿#include <windows.h>
 #include <tchar.h>
 #include <math.h>
 #include <time.h>
 
 #pragma comment(lib, "Msimg32.lib")
 
-// ÄÁÆ®·Ñ ID
+// ì»¨íŠ¸ë¡¤ ID
 #define ID_START_BTN   101
 #define ID_HOW_BTN     102
 #define ID_RESTART_BTN 201
 #define ID_HOME_BTN    202
 
-// Å¸ÀÌ¸Ó ID
+// íƒ€ì´ë¨¸ ID
 #define TIMER_MOVE 1
 #define TIMER_ZONE 2
 
 
-// ¿ùµå ¸Ê Å©±â (½ÇÁ¦ ÀüÃ¼ ¸Ê)
+// ì›”ë“œ ë§µ í¬ê¸° (ì‹¤ì œ ì „ì²´ ë§µ)
 int worldWidth = 2000;
 int worldHeight = 2000;
 
-// °ÔÀÓ È­¸éÀº ÇÃ·¹ÀÌ¾î Áß½ÉÀÇ ºäÆ÷Æ®
+// ê²Œì„ í™”ë©´ì€ í”Œë ˆì´ì–´ ì¤‘ì‹¬ì˜ ë·°í¬íŠ¸
 int viewportWidth = 550;
 int viewportHeight = 540;
 
-// °ÔÀÓ »óÅÂ
-enum GameState { STATE_MENU, STATE_PLAYING, STATE_GAMEOVER };
+// ê²Œì„ ìƒíƒœ
+enum GameState { STATE_MENU, STATE_PLAYING, STATE_GAMEOVER, STATE_HOWTOPLAY, STATE_GAMECLEAR};
 GameState g_state = STATE_MENU;
 
-// À©µµ¿ì ÀÎ½ºÅÏ½º
+// ìœˆë„ìš° ì¸ìŠ¤í„´ìŠ¤
 HINSTANCE g_hInst = NULL;
 
-// UI/°ÔÀÓ º¯¼ö
+// UI/ê²Œì„ ë³€ìˆ˜
 int playerX = 200, playerY = 300;
 int playerSize = 12;
 int hp = 100;
@@ -40,108 +40,228 @@ float safeShrinkSpeed = 0.15f;
 int secondsSurvived = 0;
 int shrinkTick = 0;
 
-// ÀÚ±âÀå °ü·Ã º¯¼ö
-int zoneStartCountdown = 3;  // ÀÚ±âÀå »ı¼º±îÁö ³²Àº ½Ã°£
-bool zoneActive = false;      // ÀÚ±âÀå È°¼ºÈ­ ¿©ºÎ
-int zoneCenterX = 0;          // ÀÚ±âÀå Áß½É X (·£´ı)
-int zoneCenterY = 0;          // ÀÚ±âÀå Áß½É Y (·£´ı)
+// ìê¸°ì¥ ê´€ë ¨ ë³€ìˆ˜
+int zoneStartCountdown = 3;  // ìê¸°ì¥ ìƒì„±ê¹Œì§€ ë‚¨ì€ ì‹œê°„
+bool zoneActive = false;      // ìê¸°ì¥ í™œì„±í™” ì—¬ë¶€
+int zoneCenterX = 0;          // ìê¸°ì¥ ì¤‘ì‹¬ X (ëœë¤)
+int zoneCenterY = 0;          // ìê¸°ì¥ ì¤‘ì‹¬ Y (ëœë¤)
 
-// ¿µ¿ª(Rect)
+// ì˜ì—­(Rect)
 RECT hpRect = { 0,0,800,60 };
 RECT gameRect = { 0,60,550,600 };
 RECT infoRect = { 550,60,800,600 };
 
-// ¸Ş´º ¹öÆ°
+// ë©”ë‰´ ë²„íŠ¼
 HWND hStartBtn = NULL;
 HWND hHowBtn = NULL;
 
-// ÆË¾÷
+// íŒì—…
 HWND hPopup = NULL;
 HWND hPopupRestart = NULL;
 HWND hPopupHome = NULL;
 
-// ÀÌ¹ÌÁö ÇÚµé
+// ì´ë¯¸ì§€ í•¸ë“¤
 HBITMAP hPlayerBmp = NULL;
 HBITMAP hBackgroundBmp = NULL;
 HBITMAP hTreeBmp = NULL;
 
-// ¹Ì´Ï¸Ê Àü¿ë ¹é¹öÆÛ
+// ë¯¸ë‹ˆë§µ ì „ìš© ë°±ë²„í¼
 HBITMAP hMinimapBuffer = NULL;
 HDC hMinimapDC = NULL;
 
-//¹Ì´Ï¸Ê Àü¿ë »çÁø
+//ë¯¸ë‹ˆë§µ ì „ìš© ì‚¬ì§„
 HBITMAP hMinimapBmp = (HBITMAP)LoadImage(NULL, _T("minimap.bmp"), IMAGE_BITMAP, 150, 150, LR_LOADFROMFILE);
 
-// ÃÑ¾Ë ±¸Á¶Ã¼
+// ì´ì•Œ êµ¬ì¡°ì²´
 struct Bullet {
-    float x, y;           // ¿ùµå ÁÂÇ¥
-    float vx, vy;         // ¼Óµµ
-    bool active;          // È°¼ºÈ­ ¿©ºÎ
+    float x, y;           // ì›”ë“œ ì¢Œí‘œ
+    float vx, vy;         // ì†ë„
+    bool active;          // í™œì„±í™” ì—¬ë¶€
 };
 
-// ¾ÆÀÌÅÛ ±¸Á¶Ã¼
+// ì•„ì´í…œ êµ¬ì¡°ì²´
 struct Item {
-    int x, y;             // ¿ùµå ÁÂÇ¥
-    int type;             // 0: ±¸±Ş»óÀÚ, 1: ¿¡³ÊÁöµå¸µÅ©
+    int x, y;             // ì›”ë“œ ì¢Œí‘œ
+    int type;             // 0: êµ¬ê¸‰ìƒì, 1: ì—ë„ˆì§€ë“œë§í¬
     bool active;
 };
 
-// ÃÑ¾Ë & ¾ÆÀÌÅÛ ¹è¿­
+// ì´ì•Œ & ì•„ì´í…œ ë°°ì—´
 #define MAX_BULLETS 50
-#define MAX_ITEMS 20
+#define MAX_ITEMS 30
 Bullet bullets[MAX_BULLETS];
 Item items[MAX_ITEMS];
 
-// ÇÃ·¹ÀÌ¾î ¼Óµµ
+// í”Œë ˆì´ì–´ ì†ë„
 int playerSpeed = 6;
-int speedBoostTimer = 0;  // ¼Óµµ Áõ°¡ Áö¼Ó ½Ã°£
+int speedBoostTimer = 0;  // ì†ë„ ì¦ê°€ ì§€ì† ì‹œê°„
 
-// ÀÌ¹ÌÁö ÇÚµé (±âÁ¸ ÀÌ¹ÌÁö ÇÚµé ±ÙÃ³¿¡ Ãß°¡)
+// ì´ë¯¸ì§€ í•¸ë“¤ (ê¸°ì¡´ ì´ë¯¸ì§€ í•¸ë“¤ ê·¼ì²˜ì— ì¶”ê°€)
 HBITMAP hBulletBmp = NULL;
 HBITMAP hMedkitBmp = NULL;
 HBITMAP hEnergyDrinkBmp = NULL;
 
-// ÃÑ¾Ë ¹ß»ç Å¸ÀÌ¸Ó
+// ì´ì•Œ ë°œì‚¬ íƒ€ì´ë¨¸
 #define TIMER_BULLET_SPAWN 3
 int bulletSpawnTick = 0;
 
-// À¯Æ¿ ÇÔ¼ö
+// ìœ í‹¸ í•¨ìˆ˜
 double Distance(int x1, int y1, int x2, int y2) {
     return sqrt((double)(x1 - x2) * (x1 - x2) + (double)(y1 - y2) * (y1 - y2));
 }
 
-// ÃÑ¾Ë »ı¼º (ÇÃ·¹ÀÌ¾î¸¦ ÇâÇØ)
+// How To Play í™”ë©´ ë Œë”
+void RenderHowToPlay(HDC hdc, RECT& client) {
+    // ê·¸ë¼ë°ì´ì…˜ ë°°ê²½
+    for (int y = 0; y < client.bottom; y++) {
+        float ratio = (float)y / client.bottom;
+        int r = 30 + (int)(20 * ratio);
+        int g = 30 + (int)(20 * ratio);
+        int b = 40 + (int)(30 * ratio);
+
+        HPEN pen = CreatePen(PS_SOLID, 1, RGB(r, g, b));
+        HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+        MoveToEx(hdc, 0, y, NULL);
+        LineTo(hdc, client.right, y);
+        SelectObject(hdc, oldPen);
+        DeleteObject(pen);
+    }
+
+    SetBkMode(hdc, TRANSPARENT);
+
+    // íƒ€ì´í‹€
+    SetTextColor(hdc, RGB(255, 200, 50));
+    HFONT hTitleFont = CreateFont(40, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, DEFAULT_PITCH, _T("Arial"));
+    HFONT oldFont = (HFONT)SelectObject(hdc, hTitleFont);
+    TextOut(hdc, 250, 40, _T("HOW TO PLAY"), lstrlen(_T("HOW TO PLAY")));
+    SelectObject(hdc, oldFont);
+    DeleteObject(hTitleFont);
+
+    // ì„¤ëª… í…ìŠ¤íŠ¸
+    HFONT hFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, DEFAULT_PITCH, _T("Arial"));
+    oldFont = (HFONT)SelectObject(hdc, hFont);
+
+    int y = 120;
+    int lineHeight = 35;
+
+    // ê¸°ë³¸ ì¡°ì‘
+    SetTextColor(hdc, RGB(100, 200, 255));
+    HFONT hBold = CreateFont(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, DEFAULT_PITCH, _T("Arial"));
+    SelectObject(hdc, hBold);
+    TextOut(hdc, 80, y, _T("Controls"), lstrlen(_T("Controls")));
+    y += lineHeight;
+
+    SelectObject(hdc, hFont);
+    SetTextColor(hdc, RGB(220, 220, 220));
+    TextOut(hdc, 100, y, _T("W / A / S / D  -  Move your character"), lstrlen(_T("W / A / S / D  -  Move your character")));
+    y += lineHeight + 10;
+
+    // ìê¸°ì¥
+    SelectObject(hdc, hBold);
+    SetTextColor(hdc, RGB(0, 180, 255));
+    TextOut(hdc, 80, y, _T("Blue Zone"), lstrlen(_T("Blue Zone")));
+    y += lineHeight;
+
+    SelectObject(hdc, hFont);
+    SetTextColor(hdc, RGB(220, 220, 220));
+    TextOut(hdc, 100, y, _T("Zone spawns randomly 3 seconds after game starts"), lstrlen(_T("Zone spawns randomly 3 seconds after game starts")));
+    y += lineHeight;
+    TextOut(hdc, 100, y, _T("Shrinks every 3 seconds"), lstrlen(_T("Shrinks every 3 seconds")));
+    y += lineHeight;
+    TextOut(hdc, 100, y, _T("Take 5 HP damage per second outside the zone"), lstrlen(_T("Take 5 HP damage per second outside the zone")));
+    y += lineHeight + 10;
+
+    // ì´ì•Œ
+    SelectObject(hdc, hBold);
+    SetTextColor(hdc, RGB(255, 100, 100));
+    TextOut(hdc, 80, y, _T("Bullets"), lstrlen(_T("Bullets")));
+    y += lineHeight;
+
+    SelectObject(hdc, hFont);
+    SetTextColor(hdc, RGB(220, 220, 220));
+    TextOut(hdc, 100, y, _T("Spawn from map edges every 2 seconds"), lstrlen(_T("Spawn from map edges every 2 seconds")));
+    y += lineHeight;
+    TextOut(hdc, 100, y, _T("Headshot  -  50 HP damage"), lstrlen(_T("Headshot  -  50 HP damage")));
+    y += lineHeight;
+    TextOut(hdc, 100, y, _T("Body shot  -  30 HP damage"), lstrlen(_T("Body shot  -  30 HP damage")));
+    y += lineHeight + 10;
+
+    // ì•„ì´í…œ
+    SelectObject(hdc, hBold);
+    SetTextColor(hdc, RGB(100, 255, 100));
+    TextOut(hdc, 80, y, _T("Items"), lstrlen(_T("Items")));
+    y += lineHeight;
+
+    SelectObject(hdc, hFont);
+    SetTextColor(hdc, RGB(220, 220, 220));
+    TextOut(hdc, 100, y, _T("Medkit (Green)  -  Restore 10 HP"), lstrlen(_T("Medkit (Green)  -  Restore 10 HP")));
+    y += lineHeight;
+    TextOut(hdc, 100, y, _T("Energy Drink (Orange)  -  Speed boost for 5 seconds"), lstrlen(_T("Energy Drink (Orange)  -  Speed boost for 5 seconds")));
+    y += lineHeight + 10;
+
+    // ëª©í‘œ
+    SelectObject(hdc, hBold);
+    SetTextColor(hdc, RGB(255, 200, 50));
+    TextOut(hdc, 80, y, _T("Goal"), lstrlen(_T("Goal")));
+    y += lineHeight;
+
+    SelectObject(hdc, hFont);
+    SetTextColor(hdc, RGB(220, 220, 220));
+    TextOut(hdc, 100, y, _T("Survive as long as possible!"), lstrlen(_T("Survive as long as possible!")));
+    y += lineHeight + 20;
+
+    // BACK ì•ˆë‚´
+    SetTextColor(hdc, RGB(150, 150, 150));
+    HFONT hSmall = CreateFont(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, DEFAULT_PITCH, _T("Arial"));
+    SelectObject(hdc, hSmall);
+    TextOut(hdc, 560, 560, _T("Press ESC to go back"), lstrlen(_T("Press ESC to go back")));
+
+    SelectObject(hdc, oldFont);
+    DeleteObject(hFont);
+    DeleteObject(hBold);
+    DeleteObject(hSmall);
+}
+
+// ì´ì•Œ ìƒì„± (í”Œë ˆì´ì–´ë¥¼ í–¥í•´)
 void SpawnBullet() {
-    // ºó ½½·Ô Ã£±â
+    // ë¹ˆ ìŠ¬ë¡¯ ì°¾ê¸°
     for (int i = 0; i < MAX_BULLETS; i++) {
         if (!bullets[i].active) {
-            // ¸Ê °¡ÀåÀÚ¸®¿¡¼­ ·£´ı »ı¼º
-            int edge = rand() % 4;  // 0:»ó, 1:ÇÏ, 2:ÁÂ, 3:¿ì
+            // ë§µ ê°€ì¥ìë¦¬ì—ì„œ ëœë¤ ìƒì„±
+            int edge = rand() % 4;  // 0:ìƒ, 1:í•˜, 2:ì¢Œ, 3:ìš°
 
-            if (edge == 0) {  // »ó´Ü
+            if (edge == 0) {  // ìƒë‹¨
                 bullets[i].x = (float)(rand() % worldWidth);
                 bullets[i].y = 0;
             }
-            else if (edge == 1) {  // ÇÏ´Ü
+            else if (edge == 1) {  // í•˜ë‹¨
                 bullets[i].x = (float)(rand() % worldWidth);
                 bullets[i].y = (float)worldHeight;
             }
-            else if (edge == 2) {  // ÁÂÃø
+            else if (edge == 2) {  // ì¢Œì¸¡
                 bullets[i].x = 0;
                 bullets[i].y = (float)(rand() % worldHeight);
             }
-            else {  // ¿ìÃø
+            else {  // ìš°ì¸¡
                 bullets[i].x = (float)worldWidth;
                 bullets[i].y = (float)(rand() % worldHeight);
             }
 
-            // ÇÃ·¹ÀÌ¾î¸¦ ÇâÇÏ´Â ¹æÇâ °è»ê
+            // í”Œë ˆì´ì–´ë¥¼ í–¥í•˜ëŠ” ë°©í–¥ ê³„ì‚°
             float dx = playerX - bullets[i].x;
             float dy = playerY - bullets[i].y;
             float dist = sqrt(dx * dx + dy * dy);
 
             if (dist > 0) {
-                bullets[i].vx = (dx / dist) * 8.0f;  // ¼Óµµ
+                bullets[i].vx = (dx / dist) * 8.0f;  // ì†ë„
                 bullets[i].vy = (dy / dist) * 8.0f;
             }
 
@@ -151,30 +271,30 @@ void SpawnBullet() {
     }
 }
 
-// ÃÑ¾Ë ¾÷µ¥ÀÌÆ®
+// ì´ì•Œ ì—…ë°ì´íŠ¸
 void UpdateBullets() {
     for (int i = 0; i < MAX_BULLETS; i++) {
         if (bullets[i].active) {
             bullets[i].x += bullets[i].vx;
             bullets[i].y += bullets[i].vy;
 
-            // ¸Ê ¹ÛÀ¸·Î ³ª°¡¸é ºñÈ°¼ºÈ­
+            // ë§µ ë°–ìœ¼ë¡œ ë‚˜ê°€ë©´ ë¹„í™œì„±í™”
             if (bullets[i].x < 0 || bullets[i].x > worldWidth ||
                 bullets[i].y < 0 || bullets[i].y > worldHeight) {
                 bullets[i].active = false;
             }
 
-            // ÇÃ·¹ÀÌ¾î¿Í Ãæµ¹ Ã¼Å©
+            // í”Œë ˆì´ì–´ì™€ ì¶©ëŒ ì²´í¬
             float dx = bullets[i].x - playerX;
             float dy = bullets[i].y - playerY;
             float dist = sqrt(dx * dx + dy * dy);
 
-            if (dist < 20) {  // Ãæµ¹
-                // ¸Ó¸®(»ó´Ü 1/3) vs ¸öÅë
-                if (dy < -8) {  // ¸Ó¸®
+            if (dist < 20) {  // ì¶©ëŒ
+                // ë¨¸ë¦¬(ìƒë‹¨ 1/3) vs ëª¸í†µ
+                if (dy < -8) {  // ë¨¸ë¦¬
                     hp -= 30;
                 }
-                else {  // ¸öÅë
+                else {  // ëª¸í†µ
                     hp -= 15;
                 }
                 if (hp < 0) hp = 0;
@@ -184,7 +304,7 @@ void UpdateBullets() {
     }
 }
 
-// ¾ÆÀÌÅÛ È¹µæ Ã¼Å©
+// ì•„ì´í…œ íšë“ ì²´í¬
 void CheckItemPickup() {
     for (int i = 0; i < MAX_ITEMS; i++) {
         if (items[i].active) {
@@ -192,14 +312,14 @@ void CheckItemPickup() {
             float dy = (float)(items[i].y - playerY);
             float dist = sqrt(dx * dx + dy * dy);
 
-            if (dist < 25) {  // È¹µæ ¹üÀ§
-                if (items[i].type == 0) {  // ±¸±Ş»óÀÚ
+            if (dist < 25) {  // íšë“ ë²”ìœ„
+                if (items[i].type == 0) {  // êµ¬ê¸‰ìƒì
                     hp += 15;
                     if (hp > 100) hp = 100;
                 }
-                else {  // ¿¡³ÊÁöµå¸µÅ©
-                    playerSpeed = 15;
-                    speedBoostTimer = 5;  // 5ÃÊ°£ Áö¼Ó
+                else {  // ì—ë„ˆì§€ë“œë§í¬
+                    playerSpeed = 20;
+                    speedBoostTimer = 7;  // 7ì´ˆê°„ ì§€ì†
                 }
                 items[i].active = false;
             }
@@ -208,7 +328,7 @@ void CheckItemPickup() {
 }
 
 void InitGame() {
-    // ÇÃ·¹ÀÌ¾î´Â ¿ùµå ¸Ê Áß½É¿¡¼­ ½ÃÀÛ
+    // í”Œë ˆì´ì–´ëŠ” ì›”ë“œ ë§µ ì¤‘ì‹¬ì—ì„œ ì‹œì‘
     playerX = worldWidth / 2;
     playerY = worldHeight / 2;
     playerSize = 12;
@@ -216,7 +336,7 @@ void InitGame() {
     playerSpeed = 6;
     speedBoostTimer = 0;
 
-    // ÀÚ±âÀå ÃÊ±âÈ­
+    // ìê¸°ì¥ ì´ˆê¸°í™”
     zoneStartCountdown = 3;
     zoneActive = false;
 
@@ -233,17 +353,17 @@ void InitGame() {
     shrinkTick = 0;
     bulletSpawnTick = 0;
 
-    // ÃÑ¾Ë ÃÊ±âÈ­
+    // ì´ì•Œ ì´ˆê¸°í™”
     for (int i = 0; i < MAX_BULLETS; i++) {
         bullets[i].active = false;
     }
 
-    // ¾ÆÀÌÅÛ ·£´ı »ı¼º (10°³)
+    // ì•„ì´í…œ ëœë¤ ìƒì„± (10ê°œ)
     for (int i = 0; i < MAX_ITEMS; i++) {
         if (i < 10) {
             items[i].x = 100 + (rand() % (worldWidth - 200));
             items[i].y = 100 + (rand() % (worldHeight - 200));
-            items[i].type = rand() % 2;  // 0: ±¸±Ş»óÀÚ, 1: ¿¡³ÊÁöµå¸µÅ©
+            items[i].type = rand() % 2;  // 0: êµ¬ê¸‰ìƒì, 1: ì—ë„ˆì§€ë“œë§í¬
             items[i].active = true;
         }
         else {
@@ -252,7 +372,7 @@ void InitGame() {
     }
 }
 
-// ±×¶óµ¥ÀÌ¼Ç ¿ø ±×¸®±â
+// ê·¸ë¼ë°ì´ì…˜ ì› ê·¸ë¦¬ê¸°
 void DrawGradientCircle(HDC hdc, int cx, int cy, float radius, COLORREF inner, COLORREF outer) {
     int steps = 30;
     for (int i = steps; i >= 0; i--) {
@@ -277,7 +397,7 @@ void DrawGradientCircle(HDC hdc, int cx, int cy, float radius, COLORREF inner, C
     }
 }
 
-// ¹Ì´Ï¸Ê ¹é¹öÆÛ ÃÊ±âÈ­
+// ë¯¸ë‹ˆë§µ ë°±ë²„í¼ ì´ˆê¸°í™”
 void InitMinimapBuffer(int mapSize) {
     if (hMinimapDC) { DeleteDC(hMinimapDC); hMinimapDC = NULL; }
     if (hMinimapBuffer) { DeleteObject(hMinimapBuffer); hMinimapBuffer = NULL; }
@@ -292,7 +412,7 @@ void RenderMinimapBuffer() {
     if (!hMinimapDC) return;
     int mapSize = 150;
 
-    // 1. ¹Ì´Ï¸Ê ¹è°æ ÀÌ¹ÌÁö
+    // 1. ë¯¸ë‹ˆë§µ ë°°ê²½ ì´ë¯¸ì§€
     if (hMinimapBmp) {
         HDC imgDC = CreateCompatibleDC(hMinimapDC);
         HBITMAP oldBmp = (HBITMAP)SelectObject(imgDC, hMinimapBmp);
@@ -301,7 +421,7 @@ void RenderMinimapBuffer() {
         DeleteDC(imgDC);
     }
 
-    // 2. ¾ÆÀÌÅÛ Ç¥½Ã
+    // 2. ì•„ì´í…œ í‘œì‹œ
     for (int i = 0; i < MAX_ITEMS; i++) {
         if (items[i].active) {
             float ix = (items[i].x / (float)worldWidth) * mapSize;
@@ -316,7 +436,7 @@ void RenderMinimapBuffer() {
         }
     }
 
-    // 3. ÃÑ¾Ë Ç¥½Ã
+    // 3. ì´ì•Œ í‘œì‹œ
     for (int i = 0; i < MAX_BULLETS; i++) {
         if (bullets[i].active) {
             float bx = (bullets[i].x / (float)worldWidth) * mapSize;
@@ -330,7 +450,7 @@ void RenderMinimapBuffer() {
         }
     }
 
-    // 4. ÀÚ±âÀå
+    // 4. ìê¸°ì¥
     if (zoneActive) {
         float zoneCenterMapX = (zoneCenterX / (float)worldWidth) * mapSize;
         float zoneCenterMapY = (zoneCenterY / (float)worldHeight) * mapSize;
@@ -349,7 +469,7 @@ void RenderMinimapBuffer() {
         DeleteObject(zonePen);
     }
 
-    // 5. ÇÃ·¹ÀÌ¾î
+    // 5. í”Œë ˆì´ì–´
     float px = (playerX / (float)worldWidth) * mapSize;
     float py = (playerY / (float)worldHeight) * mapSize;
 
@@ -366,7 +486,7 @@ void RenderMinimapBuffer() {
     SelectObject(hMinimapDC, oldPen);
     DeleteObject(playerPen);
 
-    // 6. Å×µÎ¸®
+    // 6. í…Œë‘ë¦¬
     HPEN borderPen = CreatePen(PS_SOLID, 2, RGB(80, 90, 75));
     oldPen = (HPEN)SelectObject(hMinimapDC, borderPen);
     SelectObject(hMinimapDC, GetStockObject(NULL_BRUSH));
@@ -375,27 +495,27 @@ void RenderMinimapBuffer() {
     DeleteObject(borderPen);
 }
 
-// °ÔÀÓ È­¸é ·»´õ¸µ
+// ê²Œì„ í™”ë©´ ë Œë”ë§
 void RenderGameContents(HDC hdc, RECT client) {
 
-    // ¹é¹öÆÛ »ı¼º
+    // ë°±ë²„í¼ ìƒì„±
     HDC memDC = CreateCompatibleDC(hdc);
     HBITMAP backBuffer = CreateCompatibleBitmap(hdc,
         client.right - client.left,
         client.bottom - client.top);
     HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, backBuffer);
 
-    // ÀüÃ¼ ¹è°æ
+    // ì „ì²´ ë°°ê²½
     HBRUSH bg = CreateSolidBrush(RGB(35, 35, 40));
     FillRect(memDC, &client, bg);
     DeleteObject(bg);
 
-    // HP ¹Ù ¿µ¿ª - ´ÙÅ© Åæ
+    // HP ë°” ì˜ì—­ - ë‹¤í¬ í†¤
     HBRUSH hpBg = CreateSolidBrush(RGB(25, 25, 30));
     FillRect(memDC, &hpRect, hpBg);
     DeleteObject(hpBg);
 
-    // HP ÅØ½ºÆ®
+    // HP í…ìŠ¤íŠ¸
     SetBkMode(memDC, TRANSPARENT);
     SetTextColor(memDC, RGB(255, 255, 255));
     HFONT hFont = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
@@ -407,16 +527,16 @@ void RenderGameContents(HDC hdc, RECT client) {
     wsprintf(hpText, _T("HP: %d"), hp);
     TextOut(memDC, 20, 22, hpText, lstrlen(hpText));
 
-    // HP ¹Ù
+    // HP ë°”
     int barX = 120, barY = 20, barW = 250, barH = 22;
 
-    // ¹è°æ
+    // ë°°ê²½
     HBRUSH barBg = CreateSolidBrush(RGB(50, 50, 55));
     RECT rBar = { barX, barY, barX + barW, barY + barH };
     FillRect(memDC, &rBar, barBg);
     DeleteObject(barBg);
 
-    // HP ±×¶óµ¥ÀÌ¼Ç
+    // HP ê·¸ë¼ë°ì´ì…˜
     int fillW = (hp * barW) / 100;
     for (int i = 0; i < fillW; i++) {
         float ratio = (float)i / barW;
@@ -430,7 +550,7 @@ void RenderGameContents(HDC hdc, RECT client) {
         DeleteObject(pen);
     }
 
-    // HP ¹Ù Å×µÎ¸®
+    // HP ë°” í…Œë‘ë¦¬
     HPEN barPen = CreatePen(PS_SOLID, 2, RGB(100, 100, 110));
     HPEN oldPen = (HPEN)SelectObject(memDC, barPen);
     SelectObject(memDC, GetStockObject(NULL_BRUSH));
@@ -438,21 +558,21 @@ void RenderGameContents(HDC hdc, RECT client) {
     SelectObject(memDC, oldPen);
     DeleteObject(barPen);
 
-    // Ä«¸Ş¶ó °è»ê (ÇÃ·¹ÀÌ¾î Áß½É)
+    // ì¹´ë©”ë¼ ê³„ì‚° (í”Œë ˆì´ì–´ ì¤‘ì‹¬)
     int cameraX = playerX - viewportWidth / 2;
     int cameraY = playerY - viewportHeight / 2;
 
-    // Ä«¸Ş¶ó°¡ ¿ùµå ¹ÛÀ¸·Î ³ª°¡Áö ¾Êµµ·Ï Á¦ÇÑ
+    // ì¹´ë©”ë¼ê°€ ì›”ë“œ ë°–ìœ¼ë¡œ ë‚˜ê°€ì§€ ì•Šë„ë¡ ì œí•œ
     if (cameraX < 0) cameraX = 0;
     if (cameraY < 0) cameraY = 0;
     if (cameraX + viewportWidth > worldWidth) cameraX = worldWidth - viewportWidth;
     if (cameraY + viewportHeight > worldHeight) cameraY = worldHeight - viewportHeight;
 
-    // ¹è°æ ±×¸®±â (Ä«¸Ş¶ó ¿µ¿ª¸¸)
+    // ë°°ê²½ ê·¸ë¦¬ê¸° (ì¹´ë©”ë¼ ì˜ì—­ë§Œ)
     HDC bgDC = CreateCompatibleDC(memDC);
     HBITMAP oldBg = (HBITMAP)SelectObject(bgDC, hBackgroundBmp);
 
-    // ¿ùµå ¸ÊÀÇ ÀÏºÎ¸¸ Àß¶ó¼­ Ç¥½Ã
+    // ì›”ë“œ ë§µì˜ ì¼ë¶€ë§Œ ì˜ë¼ì„œ í‘œì‹œ
     StretchBlt(memDC,
         gameRect.left, gameRect.top,
         viewportWidth, viewportHeight,
@@ -464,15 +584,15 @@ void RenderGameContents(HDC hdc, RECT client) {
     SelectObject(bgDC, oldBg);
     DeleteDC(bgDC);
 
-    //Å¬¸®ÇÎ ¼³Á¤
+    //í´ë¦¬í•‘ ì„¤ì •
     HRGN gameRgn = CreateRectRgn(gameRect.left, gameRect.top, gameRect.right, gameRect.bottom);
     SelectClipRgn(memDC, gameRgn);
 
-    // ÀÚ±âÀå - ¿ùµå ÁÂÇ¥¸¦ È­¸é ÁÂÇ¥·Î º¯È¯
+    // ìê¸°ì¥ - ì›”ë“œ ì¢Œí‘œë¥¼ í™”ë©´ ì¢Œí‘œë¡œ ë³€í™˜
     int worldCenterX = worldWidth / 2;
     int worldCenterY = worldHeight / 2;
 
-    // ÀÚ±âÀå - È°¼ºÈ­µÈ °æ¿ì¿¡¸¸ Ç¥½Ã
+    // ìê¸°ì¥ - í™œì„±í™”ëœ ê²½ìš°ì—ë§Œ í‘œì‹œ
     if (zoneActive) {
         int screenZoneCenterX = gameRect.left + (zoneCenterX - cameraX);
         int screenZoneCenterY = gameRect.top + (zoneCenterY - cameraY);
@@ -489,16 +609,16 @@ void RenderGameContents(HDC hdc, RECT client) {
         DeleteObject(zonePen);
     }
 
-    // Å¬¸®ÇÎ ÇØÁ¦
+    // í´ë¦¬í•‘ í•´ì œ
     SelectClipRgn(memDC, NULL);
 
-    // ¾ÆÀÌÅÛ ±×¸®±â
+    // ì•„ì´í…œ ê·¸ë¦¬ê¸°
     for (int i = 0; i < MAX_ITEMS; i++) {
         if (items[i].active) {
             int screenItemX = gameRect.left + (items[i].x - cameraX);
             int screenItemY = gameRect.top + (items[i].y - cameraY);
 
-            // È­¸é ¾È¿¡ ÀÖÀ» ¶§¸¸ ±×¸®±â
+            // í™”ë©´ ì•ˆì— ìˆì„ ë•Œë§Œ ê·¸ë¦¬ê¸°
             if (screenItemX >= gameRect.left && screenItemX <= gameRect.right &&
                 screenItemY >= gameRect.top && screenItemY <= gameRect.bottom) {
 
@@ -520,7 +640,7 @@ void RenderGameContents(HDC hdc, RECT client) {
         }
     }
 
-    // ÃÑ¾Ë ±×¸®±â
+    // ì´ì•Œ ê·¸ë¦¬ê¸°
     for (int i = 0; i < MAX_BULLETS; i++) {
         if (bullets[i].active) {
             int screenBulletX = gameRect.left + ((int)bullets[i].x - cameraX);
@@ -546,7 +666,7 @@ void RenderGameContents(HDC hdc, RECT client) {
         }
     }
 
-    // ÇÃ·¹ÀÌ¾î - ¿ùµå ÁÂÇ¥¸¦ È­¸é ÁÂÇ¥·Î º¯È¯
+    // í”Œë ˆì´ì–´ - ì›”ë“œ ì¢Œí‘œë¥¼ í™”ë©´ ì¢Œí‘œë¡œ ë³€í™˜
     int screenPlayerX = gameRect.left + (playerX - cameraX);
     int screenPlayerY = gameRect.top + (playerY - cameraY);
 
@@ -564,12 +684,12 @@ void RenderGameContents(HDC hdc, RECT client) {
         DeleteDC(playerDC);
     }
 
-    // Info ¿µ¿ª - ´ÙÅ© Åæ
+    // Info ì˜ì—­ - ë‹¤í¬ í†¤
     HBRUSH bInfo = CreateSolidBrush(RGB(30, 30, 35));
     FillRect(memDC, &infoRect, bInfo);
     DeleteObject(bInfo);
 
-    // Info ÅØ½ºÆ®
+    // Info í…ìŠ¤íŠ¸
     SetTextColor(memDC, RGB(200, 200, 200));
     TCHAR buf[128];
 
@@ -582,9 +702,9 @@ void RenderGameContents(HDC hdc, RECT client) {
 
     wsprintf(buf, _T("Time: %d sec"), secondsSurvived);
     TextOut(memDC, infoRect.left + 20, infoRect.top + 80, buf, lstrlen(buf));
-    // »óÅÂ Ç¥½Ã
+    // ìƒíƒœ í‘œì‹œ
     if (!zoneActive && zoneStartCountdown > 0) {
-        // Ä«¿îÆ®´Ù¿î Ç¥½Ã
+        // ì¹´ìš´íŠ¸ë‹¤ìš´ í‘œì‹œ
         SetTextColor(memDC, RGB(255, 200, 50));
         HFONT hBigFont = CreateFont(24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -610,19 +730,19 @@ void RenderGameContents(HDC hdc, RECT client) {
                 _T("Safe"), lstrlen(_T("Safe")));
         }
     }
-    // ¼Óµµ ºÎ½ºÆ® Ç¥½Ã
+    // ì†ë„ ë¶€ìŠ¤íŠ¸ í‘œì‹œ
     if (speedBoostTimer > 0) {
         SetTextColor(memDC, RGB(255, 150, 0));
         wsprintf(buf, _T("SPEED BOOST: %ds"), speedBoostTimer);
         TextOut(memDC, infoRect.left + 20, infoRect.top + 170, buf, lstrlen(buf));
     }
 
-    // ¹Ì´Ï¸Ê Å¸ÀÌÆ²
+    // ë¯¸ë‹ˆë§µ íƒ€ì´í‹€
     SetTextColor(memDC, RGB(200, 200, 200));
     TextOut(memDC, infoRect.left + 20, infoRect.top + 200,
         _T("MINIMAP"), lstrlen(_T("MINIMAP")));
 
-    // ¹Ì´Ï¸Ê
+    // ë¯¸ë‹ˆë§µ
     RenderMinimapBuffer();
     int mapSize = 150;
     int mapX = infoRect.left + 20;
@@ -632,17 +752,17 @@ void RenderGameContents(HDC hdc, RECT client) {
     SelectObject(memDC, oldFont);
     DeleteObject(hFont);
 
-    // È­¸é Ãâ·Â
+    // í™”ë©´ ì¶œë ¥
     BitBlt(hdc, 0, 0, client.right - client.left, client.bottom - client.top,
         memDC, 0, 0, SRCCOPY);
 
-    // Á¤¸®
+    // ì •ë¦¬
     SelectObject(memDC, oldBmp);
     DeleteObject(backBuffer);
     DeleteDC(memDC);
 }
 
-// ÆË¾÷
+// íŒì—…
 void CreateGameOverPopup(HWND hWnd) {
     RECT rcClient;
     GetClientRect(hWnd, &rcClient);
@@ -680,8 +800,38 @@ void DestroyGameOverPopup() {
     if (hPopup) { DestroyWindow(hPopup); hPopup = NULL; }
 }
 
+void CreateGameClearPopup(HWND hWnd) {
+    RECT rcClient;
+    GetClientRect(hWnd, &rcClient);
+    int popupW = 350, popupH = 180;
+    int px = (rcClient.right - popupW) / 2;
+    int py = (rcClient.bottom - popupH) / 2;
 
-// ¸Ş´º ¹öÆ°
+    hPopup = CreateWindowEx(
+        WS_EX_CLIENTEDGE,
+        _T("STATIC"),
+        NULL,
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        px, py, popupW, popupH,
+        hWnd, NULL, g_hInst, NULL
+    );
+
+    hPopupRestart = CreateWindow(
+        _T("BUTTON"), _T("RESTART"),
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        px + 50, py + 120, 100, 35,
+        hWnd, (HMENU)ID_RESTART_BTN, g_hInst, NULL
+    );
+
+    hPopupHome = CreateWindow(
+        _T("BUTTON"), _T("HOME"),
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        px + 200, py + 120, 100, 35,
+        hWnd, (HMENU)ID_HOME_BTN, g_hInst, NULL
+    );
+}
+
+// ë©”ë‰´ ë²„íŠ¼
 void ShowMenuButtons(HWND hWnd, bool show) {
     if (show) {
         if (!hStartBtn) {
@@ -706,9 +856,9 @@ void ShowMenuButtons(HWND hWnd, bool show) {
     }
 }
 
-// ¸Ş´º ·»´õ
+// ë©”ë‰´ ë Œë”
 void RenderMenu(HDC hdc, RECT& client) {
-    // ±×¶óµ¥ÀÌ¼Ç ¹è°æ
+    // ê·¸ë¼ë°ì´ì…˜ ë°°ê²½
     for (int y = 0; y < client.bottom; y++) {
         float ratio = (float)y / client.bottom;
         int r = 30 + (int)(20 * ratio);
@@ -723,7 +873,7 @@ void RenderMenu(HDC hdc, RECT& client) {
         DeleteObject(pen);
     }
 
-    // Å¸ÀÌÆ²
+    // íƒ€ì´í‹€
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, RGB(255, 200, 50));
     HFONT hTitleFont = CreateFont(48, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
@@ -738,7 +888,6 @@ void RenderMenu(HDC hdc, RECT& client) {
     DeleteObject(hTitleFont);
 }
 
-// °ÔÀÓ¿À¹ö ·»´õ
 void RenderGameOverPopup(HDC hdc) {
     if (!hPopup) return;
 
@@ -748,12 +897,12 @@ void RenderGameOverPopup(HDC hdc) {
     ScreenToClient(GetParent(hPopup), &topleft);
     RECT r = { topleft.x, topleft.y, topleft.x + (rc.right - rc.left), topleft.y + (rc.bottom - rc.top) };
 
-    // ¹İÅõ¸í ¹è°æ
+    // ë°˜íˆ¬ëª… ë°°ê²½
     HBRUSH darkBrush = CreateSolidBrush(RGB(20, 20, 25));
     FillRect(hdc, &r, darkBrush);
     DeleteObject(darkBrush);
 
-    // Å×µÎ¸®
+    // í…Œë‘ë¦¬
     HPEN borderPen = CreatePen(PS_SOLID, 3, RGB(255, 80, 80));
     HPEN oldPen = (HPEN)SelectObject(hdc, borderPen);
     SelectObject(hdc, GetStockObject(NULL_BRUSH));
@@ -761,7 +910,7 @@ void RenderGameOverPopup(HDC hdc) {
     SelectObject(hdc, oldPen);
     DeleteObject(borderPen);
 
-    // ÅØ½ºÆ®
+    // í…ìŠ¤íŠ¸
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, RGB(255, 80, 80));
     HFONT hFont = CreateFont(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
@@ -769,24 +918,89 @@ void RenderGameOverPopup(HDC hdc) {
         ANTIALIASED_QUALITY, DEFAULT_PITCH, _T("Arial"));
     HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
 
-    TextOut(hdc, r.left + 70, r.top + 30, _T("GAME OVER"), lstrlen(_T("GAME OVER")));
+    TextOut(hdc, r.left + 70, r.top + 20, _T("GAME OVER"), lstrlen(_T("GAME OVER")));
 
     SelectObject(hdc, oldFont);
     DeleteObject(hFont);
 
+    // Congratulations í…ìŠ¤íŠ¸
+    SetTextColor(hdc, RGB(255, 200, 50));
+    HFONT hFont2 = CreateFont(20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, DEFAULT_PITCH, _T("Arial"));
+    oldFont = (HFONT)SelectObject(hdc, hFont2);
+
+    TextOut(hdc, r.left + 60, r.top + 60, _T("Congratulations!"), lstrlen(_T("Congratulations!")));
+
+    SelectObject(hdc, oldFont);
+    DeleteObject(hFont2);
+
+    // Score í…ìŠ¤íŠ¸
     SetTextColor(hdc, RGB(200, 200, 200));
-    HFONT hFont2 = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT hFont3 = CreateFont(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, DEFAULT_PITCH, _T("Arial"));
+    oldFont = (HFONT)SelectObject(hdc, hFont3);
+
+    TCHAR buf[128];
+    wsprintf(buf, _T("Your score is %d seconds!"), secondsSurvived);
+    TextOut(hdc, r.left + 70, r.top + 88, buf, lstrlen(buf));
+
+    SelectObject(hdc, oldFont);
+    DeleteObject(hFont3);
+}
+
+void RenderGameClearPopup(HDC hdc) {
+    if (!hPopup) return;
+
+    RECT rc;
+    GetWindowRect(hPopup, &rc);
+    POINT topleft = { rc.left, rc.top };
+    ScreenToClient(GetParent(hPopup), &topleft);
+    RECT r = { topleft.x, topleft.y, topleft.x + (rc.right - rc.left), topleft.y + (rc.bottom - rc.top) };
+
+    // ë°˜íˆ¬ëª… ë°°ê²½
+    HBRUSH darkBrush = CreateSolidBrush(RGB(20, 20, 25));
+    FillRect(hdc, &r, darkBrush);
+    DeleteObject(darkBrush);
+
+    // í…Œë‘ë¦¬
+    HPEN borderPen = CreatePen(PS_SOLID, 3, RGB(50, 255, 50));
+    HPEN oldPen = (HPEN)SelectObject(hdc, borderPen);
+    SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    Rectangle(hdc, r.left, r.top, r.right, r.bottom);
+    SelectObject(hdc, oldPen);
+    DeleteObject(borderPen);
+
+    // í…ìŠ¤íŠ¸
+    SetBkMode(hdc, TRANSPARENT);
+
+    SetTextColor(hdc, RGB(50, 255, 50));
+    HFONT hFont = CreateFont(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, DEFAULT_PITCH, _T("Arial"));
+    HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+
+    TextOut(hdc, r.left + 40, r.top + 20, _T("VICTORY!"), lstrlen(_T("VICTORY!")));
+
+    SelectObject(hdc, oldFont);
+    DeleteObject(hFont);
+
+    // ì‹œê°„/ì ìˆ˜
+    SetTextColor(hdc, RGB(200, 200, 255));
+    HFONT hFont2 = CreateFont(20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         ANTIALIASED_QUALITY, DEFAULT_PITCH, _T("Arial"));
     oldFont = (HFONT)SelectObject(hdc, hFont2);
 
     TCHAR buf[128];
-    wsprintf(buf, _T("You survived %d seconds"), secondsSurvived);
-    TextOut(hdc, r.left + 70, r.top + 75, buf, lstrlen(buf));
+    wsprintf(buf, _T("Survived: %d seconds"), secondsSurvived);
+    TextOut(hdc, r.left + 70, r.top + 70, buf, lstrlen(buf));
 
     SelectObject(hdc, oldFont);
     DeleteObject(hFont2);
 }
+
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -814,9 +1028,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             InvalidateRect(hWnd, NULL, TRUE);
         }
         else if (id == ID_HOW_BTN && code == BN_CLICKED) {
-            MessageBox(hWnd,
-                _T("WASD·Î ÀÌµ¿ÇÏ¼¼¿ä\n\nºí·çÁ¸(ÆÄ¶õ ¿ø) ¾È¿¡ ¸Ó¹°·¯¾ß ÇÕ´Ï´Ù\n¿ø ¹Û¿¡ ÀÖÀ¸¸é HP°¡ °¨¼ÒÇÕ´Ï´Ù\n\nÃÖ´ëÇÑ ¿À·¡ »ıÁ¸ÇÏ¼¼¿ä!"),
-                _T("How To Play"), MB_OK | MB_ICONINFORMATION);
+            ShowMenuButtons(hWnd, false);
+            g_state = STATE_HOWTOPLAY;
+            InvalidateRect(hWnd, NULL, TRUE);
         }
         else if (id == ID_RESTART_BTN && code == BN_CLICKED) {
             DestroyGameOverPopup();
@@ -843,13 +1057,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             case 'D': case 'd': playerX += playerSpeed; break;
             }
 
-            // ¿ùµå ¸Ê °æ°è Ã¼Å©
+            // ì›”ë“œ ë§µ ê²½ê³„ ì²´í¬
             if (playerX - playerSize < 0) playerX = playerSize;
             if (playerX + playerSize > worldWidth) playerX = worldWidth - playerSize;
             if (playerY - playerSize < 0) playerY = playerSize;
             if (playerY + playerSize > worldHeight) playerY = worldHeight - playerSize;
 
             InvalidateRect(hWnd, NULL, FALSE);
+        }
+        else if (g_state == STATE_HOWTOPLAY && wParam == VK_ESCAPE) {
+            // HOW TO PLAYì—ì„œ ESC ëˆ„ë¥´ë©´ ë©”ë‰´ë¡œ
+            ShowMenuButtons(hWnd, true);
+            g_state = STATE_MENU;
+            InvalidateRect(hWnd, NULL, TRUE);
         }
         return 0;
 
@@ -858,15 +1078,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (wParam == TIMER_ZONE) {
                 secondsSurvived++;
 
-                // ¼Óµµ ºÎ½ºÆ® Å¸ÀÌ¸Ó
+                // ì†ë„ ë¶€ìŠ¤íŠ¸ íƒ€ì´ë¨¸
                 if (speedBoostTimer > 0) {
                     speedBoostTimer--;
                     if (speedBoostTimer == 0) {
-                        playerSpeed = 6;  // ¿ø·¡ ¼Óµµ·Î
+                        playerSpeed = 6;  // ì›ë˜ ì†ë„ë¡œ
                     }
                 }
 
-                // ÀÚ±âÀå Ä«¿îÆ®´Ù¿î
+                // ìê¸°ì¥ ì¹´ìš´íŠ¸ë‹¤ìš´
                 if (!zoneActive) {
                     zoneStartCountdown--;
                     if (zoneStartCountdown <= 0) {
@@ -876,9 +1096,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 else {
                     shrinkTick++;
                     if (shrinkTick % 3 == 0 && safeRadius > 30) {
-                        safeRadius -= 8;
+                        int dynamicShrink = 15 + (secondsSurvived / 5); // ì‹œê°„ ê¸°ë°˜ ì¦ê°€
+                        safeRadius -= dynamicShrink;
                     }
-
+                    if (safeRadius <= 30 && hp > 0) {
+                        KillTimer(hWnd, TIMER_MOVE);
+                        KillTimer(hWnd, TIMER_ZONE);
+                        g_state = STATE_GAMECLEAR;
+                        CreateGameClearPopup(hWnd);
+                    }
                     double d = Distance(playerX, playerY, zoneCenterX, zoneCenterY);
                     if (d > safeRadius) {
                         hp -= 5;
@@ -886,7 +1112,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     }
                 }
 
-                // ÃÑ¾Ë »ı¼º (2ÃÊ¸¶´Ù)
+                // ì´ì•Œ ìƒì„± (2ì´ˆë§ˆë‹¤)
                 bulletSpawnTick++;
                 if (bulletSpawnTick >= 2 && zoneActive) {
                     SpawnBullet();
@@ -909,6 +1135,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
         }
         return 0;
+    case WM_CTLCOLORSTATIC:
+    {
+        HDC hdcStatic = (HDC)wParam;
+        SetBkMode(hdcStatic, TRANSPARENT);
+        return (INT_PTR)GetStockObject(NULL_BRUSH);
+    }
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hWnd, &ps);
@@ -919,12 +1151,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (g_state == STATE_MENU) {
             RenderMenu(hdc, client);
         }
+        else if (g_state == STATE_HOWTOPLAY) {
+            RenderHowToPlay(hdc, client);
+        }
         else if (g_state == STATE_PLAYING) {
             RenderGameContents(hdc, client);
         }
         else if (g_state == STATE_GAMEOVER) {
             RenderGameContents(hdc, client);
             RenderGameOverPopup(hdc);
+        }
+        else if (g_state == STATE_GAMECLEAR) {
+            RenderGameContents(hdc, client);
+            RenderGameClearPopup(hdc);
         }
 
         EndPaint(hWnd, &ps);
@@ -952,7 +1191,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     LPTSTR lpCmdLine, int nCmdShow) {
     g_hInst = hInstance;
 
-    // ·£´ı ½Ãµå ÃÊ±âÈ­
+    // ëœë¤ ì‹œë“œ ì´ˆê¸°í™”
     srand((unsigned int)time(NULL));
 
     WNDCLASS wc = { 0 };

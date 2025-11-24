@@ -1,6 +1,6 @@
 ﻿  main.cpp
-C:\windowprogramming\MiniBattleGround\main.cpp(141,24): warning C4244: '초기화 중': 'double'에서 'float'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\windowprogramming\MiniBattleGround\main.cpp(170,24): warning C4244: '초기화 중': 'double'에서 'float'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\windowprogramming\MiniBattleGround\main.cpp(193,24): warning C4244: '초기화 중': 'double'에서 'float'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\windowprogramming\MiniBattleGround\main.cpp(231,29): warning C4244: '=': 'int'에서 'float'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\windowprogramming\MiniBattleGround\main.cpp(261,24): warning C4244: '초기화 중': 'double'에서 'float'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\windowprogramming\MiniBattleGround\main.cpp(290,24): warning C4244: '초기화 중': 'double'에서 'float'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\windowprogramming\MiniBattleGround\main.cpp(313,24): warning C4244: '초기화 중': 'double'에서 'float'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\windowprogramming\MiniBattleGround\main.cpp(351,29): warning C4244: '=': 'int'에서 'float'(으)로 변환하면서 데이터가 손실될 수 있습니다.
   MiniBattleGround.vcxproj -> C:\windowprogramming\MiniBattleGround\x64\Debug\MiniBattleGround.exe
