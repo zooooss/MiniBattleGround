@@ -14,6 +14,14 @@
 #define TIMER_MOVE 1
 #define TIMER_ZONE 2
 
+// 월드 맵 크기 (실제 전체 맵)
+int worldWidth = 2000;
+int worldHeight = 2000;
+
+// 게임 화면은 플레이어 중심의 뷰포트
+int viewportWidth = 550;
+int viewportHeight = 540;
+
 // 게임 상태
 enum GameState { STATE_MENU, STATE_PLAYING, STATE_GAMEOVER };
 GameState g_state = STATE_MENU;
@@ -53,17 +61,23 @@ HBITMAP hTreeBmp = NULL;
 HBITMAP hMinimapBuffer = NULL;
 HDC hMinimapDC = NULL;
 
+//미니맵 전용 사진
+HBITMAP hMinimapBmp = (HBITMAP)LoadImage(NULL, _T("minimap.bmp"), IMAGE_BITMAP, 150, 150, LR_LOADFROMFILE);
+
+
 // 유틸 함수
 double Distance(int x1, int y1, int x2, int y2) {
     return sqrt((double)(x1 - x2) * (x1 - x2) + (double)(y1 - y2) * (y1 - y2));
 }
 
 void InitGame() {
-    playerX = (gameRect.left + gameRect.right) / 2;
-    playerY = (gameRect.top + gameRect.bottom) / 2;
+    // 플레이어는 월드 맵 중심에서 시작
+    playerX = worldWidth / 2;   // 1000
+    playerY = worldHeight / 2;  // 1000
     playerSize = 12;
     hp = 100;
-    safeRadius = min((gameRect.right - gameRect.left), (gameRect.bottom - gameRect.top)) / 2.5f;
+    // 자기장도 월드 맵 기준
+    safeRadius = worldWidth / 4;  // 500
     secondsSurvived = 0;
     shrinkTick = 0;
 }
@@ -104,59 +118,55 @@ void InitMinimapBuffer(int mapSize) {
     SelectObject(hMinimapDC, hMinimapBuffer);
     ReleaseDC(NULL, hdc);
 }
-
 // 미니맵 백버퍼에 그림
 void RenderMinimapBuffer() {
     if (!hMinimapDC) return;
-
     int mapSize = 150;
 
-    // 배경 - 어두운 그린/브라운 톤
-    HBRUSH bg = CreateSolidBrush(RGB(45, 52, 40));
-    HBRUSH old = (HBRUSH)SelectObject(hMinimapDC, bg);
-    Rectangle(hMinimapDC, 0, 0, mapSize, mapSize);
-    SelectObject(hMinimapDC, old);
-    DeleteObject(bg);
+    // 1. 미니맵 배경 이미지
+    if (hMinimapBmp) {
+        HDC imgDC = CreateCompatibleDC(hMinimapDC);
+        HBITMAP oldBmp = (HBITMAP)SelectObject(imgDC, hMinimapBmp);
+        BitBlt(hMinimapDC, 0, 0, mapSize, mapSize, imgDC, 0, 0, SRCCOPY);
+        SelectObject(imgDC, oldBmp);
+        DeleteDC(imgDC);
+    }
 
-    // 테두리
-    HPEN borderPen = CreatePen(PS_SOLID, 2, RGB(80, 90, 75));
-    HPEN oldPen = (HPEN)SelectObject(hMinimapDC, borderPen);
-    SelectObject(hMinimapDC, GetStockObject(NULL_BRUSH));
-    Rectangle(hMinimapDC, 0, 0, mapSize, mapSize);
-    SelectObject(hMinimapDC, oldPen);
-    DeleteObject(borderPen);
-
-    // 자기장 - 블루존
-    float worldSize = 550.0f;
-    float zoneRatio = safeRadius / (worldSize / 2);
-    int zoneR = (int)(zoneRatio * (mapSize / 2));
-
+    // 2. 자기장 - 월드 맵 기준
+    float zoneRatio = safeRadius / (worldWidth / 2.0f);
+    int zoneR = (int)(zoneRatio * (mapSize / 2.0f));
     HPEN zonePen = CreatePen(PS_SOLID, 3, RGB(0, 120, 255));
-    oldPen = (HPEN)SelectObject(hMinimapDC, zonePen);
+    HPEN oldPen = (HPEN)SelectObject(hMinimapDC, zonePen);
     SelectObject(hMinimapDC, GetStockObject(NULL_BRUSH));
     Ellipse(hMinimapDC, mapSize / 2 - zoneR, mapSize / 2 - zoneR,
         mapSize / 2 + zoneR, mapSize / 2 + zoneR);
     SelectObject(hMinimapDC, oldPen);
     DeleteObject(zonePen);
 
-    // 플레이어 위치
-    float gameWidth = (float)(gameRect.right - gameRect.left);   // 550
-    float gameHeight = (float)(gameRect.bottom - gameRect.top);  // 540
-    float px = ((playerX - gameRect.left) / gameWidth) * mapSize;
-    float py = ((playerY - gameRect.top) / gameHeight) * mapSize;
+    // 3. 플레이어 위치 - 월드 맵 기준
+    float px = (playerX / (float)worldWidth) * mapSize;
+    float py = (playerY / (float)worldHeight) * mapSize;
+
     HBRUSH pBrush = CreateSolidBrush(RGB(255, 220, 0));
-    old = (HBRUSH)SelectObject(hMinimapDC, pBrush);
+    HBRUSH oldBrush = (HBRUSH)SelectObject(hMinimapDC, pBrush);
     Ellipse(hMinimapDC, (int)px - 5, (int)py - 5, (int)px + 5, (int)py + 5);
-    SelectObject(hMinimapDC, old);
+    SelectObject(hMinimapDC, oldBrush);
     DeleteObject(pBrush);
 
-    // 플레이어 외곽선
     HPEN playerPen = CreatePen(PS_SOLID, 2, RGB(0, 0, 0));
     oldPen = (HPEN)SelectObject(hMinimapDC, playerPen);
     SelectObject(hMinimapDC, GetStockObject(NULL_BRUSH));
     Ellipse(hMinimapDC, (int)px - 5, (int)py - 5, (int)px + 5, (int)py + 5);
     SelectObject(hMinimapDC, oldPen);
     DeleteObject(playerPen);
+
+    // 4. 테두리
+    HPEN borderPen = CreatePen(PS_SOLID, 2, RGB(80, 90, 75));
+    oldPen = (HPEN)SelectObject(hMinimapDC, borderPen);
+    SelectObject(hMinimapDC, GetStockObject(NULL_BRUSH));
+    Rectangle(hMinimapDC, 0, 0, mapSize, mapSize);
+    SelectObject(hMinimapDC, oldPen);
+    DeleteObject(borderPen);
 }
 
 // 게임 화면 렌더링
@@ -221,48 +231,63 @@ void RenderGameContents(HDC hdc, RECT client) {
     SelectObject(memDC, oldPen);
     DeleteObject(barPen);
 
-    //// 게임 영역 - 배경 그리기
+    // 카메라 계산 (플레이어 중심)
+    int cameraX = playerX - viewportWidth / 2;
+    int cameraY = playerY - viewportHeight / 2;
+
+    // 카메라가 월드 밖으로 나가지 않도록 제한
+    if (cameraX < 0) cameraX = 0;
+    if (cameraY < 0) cameraY = 0;
+    if (cameraX + viewportWidth > worldWidth) cameraX = worldWidth - viewportWidth;
+    if (cameraY + viewportHeight > worldHeight) cameraY = worldHeight - viewportHeight;
+
+    // 배경 그리기 (카메라 영역만)
     HDC bgDC = CreateCompatibleDC(memDC);
     HBITMAP oldBg = (HBITMAP)SelectObject(bgDC, hBackgroundBmp);
 
-    // 배경 이미지를 게임 영역에 맞춰서 늘려서 그리기
-    int gameWidth = gameRect.right - gameRect.left;   // 550
-    int gameHeight = gameRect.bottom - gameRect.top;  // 540
-
-   StretchBlt(memDC,
-      gameRect.left, gameRect.top,           // 목적지 위치
-        gameWidth, gameHeight,                 // 목적지 크기
+    // 월드 맵의 일부만 잘라서 표시
+    StretchBlt(memDC,
+        gameRect.left, gameRect.top,
+        viewportWidth, viewportHeight,
         bgDC,
-        0, 0,                                  // 원본 위치
-        1000, 562,                             // 원본 크기
+        (cameraX * 1000) / worldWidth, (cameraY * 562) / worldHeight,
+        (viewportWidth * 1000) / worldWidth, (viewportHeight * 562) / worldHeight,
         SRCCOPY);
 
     SelectObject(bgDC, oldBg);
     DeleteDC(bgDC);
 
-    // 자기장 - 블루존 (그라데이션 + 반투명 효과)
-    int centerX = (gameRect.left + gameRect.right) / 2;
-    int centerY = (gameRect.top + gameRect.bottom) / 2;
+    // 자기장 - 월드 좌표를 화면 좌표로 변환
+    int worldCenterX = worldWidth / 2;
+    int worldCenterY = worldHeight / 2;
 
-    // 블루존 테두리
+    int screenZoneCenterX = gameRect.left + (worldCenterX - cameraX);
+    int screenZoneCenterY = gameRect.top + (worldCenterY - cameraY);
+
     HPEN zonePen = CreatePen(PS_SOLID, 4, RGB(0, 120, 255));
     oldPen = (HPEN)SelectObject(memDC, zonePen);
     SelectObject(memDC, GetStockObject(NULL_BRUSH));
-    Ellipse(memDC, centerX - (int)safeRadius, centerY - (int)safeRadius,
-        centerX + (int)safeRadius, centerY + (int)safeRadius);
+    Ellipse(memDC,
+        screenZoneCenterX - (int)safeRadius,
+        screenZoneCenterY - (int)safeRadius,
+        screenZoneCenterX + (int)safeRadius,
+        screenZoneCenterY + (int)safeRadius);
     SelectObject(memDC, oldPen);
     DeleteObject(zonePen);
 
-    // 플레이어
+    // 플레이어 - 월드 좌표를 화면 좌표로 변환
+    int screenPlayerX = gameRect.left + (playerX - cameraX);
+    int screenPlayerY = gameRect.top + (playerY - cameraY);
+
     if (hPlayerBmp) {
         HDC playerDC = CreateCompatibleDC(memDC);
         HBITMAP oldPlayer = (HBITMAP)SelectObject(playerDC, hPlayerBmp);
 
         TransparentBlt(memDC,
-            playerX - 16, playerY - 16,
+            screenPlayerX - 16, screenPlayerY - 16,
             32, 32,
             playerDC, 0, 0, 32, 32,
-            RGB(255, 0, 255)); // 마젠타를 투명색으로
+            RGB(255, 0, 255));
 
         SelectObject(playerDC, oldPlayer);
         DeleteDC(playerDC);
@@ -287,7 +312,7 @@ void RenderGameContents(HDC hdc, RECT client) {
     TextOut(memDC, infoRect.left + 20, infoRect.top + 80, buf, lstrlen(buf));
 
     // 상태 표시
-    double d = Distance(playerX, playerY, centerX, centerY);
+    double d = Distance(playerX, playerY, worldCenterX, worldCenterY);
     if (d > safeRadius) {
         SetTextColor(memDC, RGB(255, 80, 80));
         TextOut(memDC, infoRect.left + 20, infoRect.top + 110,
@@ -521,10 +546,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             case 'A': case 'a': playerX -= 6; break;
             case 'D': case 'd': playerX += 6; break;
             }
-            if (playerX - playerSize < gameRect.left) playerX = gameRect.left + playerSize;
-            if (playerX + playerSize > gameRect.right) playerX = gameRect.right - playerSize;
-            if (playerY - playerSize < gameRect.top) playerY = gameRect.top + playerSize;
-            if (playerY + playerSize > gameRect.bottom) playerY = gameRect.bottom - playerSize;
+
+            // 월드 맵 경계 체크
+            if (playerX - playerSize < 0) playerX = playerSize;
+            if (playerX + playerSize > worldWidth) playerX = worldWidth - playerSize;
+            if (playerY - playerSize < 0) playerY = playerSize;
+            if (playerY + playerSize > worldHeight) playerY = worldHeight - playerSize;
 
             InvalidateRect(hWnd, NULL, FALSE);
         }
@@ -537,10 +564,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 secondsSurvived++;
                 if (shrinkTick % 3 == 0 && safeRadius > 30) safeRadius -= 8;
 
-                int cx = (gameRect.left + gameRect.right) / 2;
-                int cy = (gameRect.top + gameRect.bottom) / 2;
-                double d = Distance(playerX, playerY, cx, cy);
-                if (d > safeRadius) { hp -= 5; if (hp < 0) hp = 0; }
+                // 월드 맵 중심과 플레이어 거리
+                int worldCenterX = worldWidth / 2;
+                int worldCenterY = worldHeight / 2;
+                double d = Distance(playerX, playerY, worldCenterX, worldCenterY);
+
+                if (d > safeRadius) {
+                    hp -= 5;
+                    if (hp < 0) hp = 0;
+                }
 
                 if (hp <= 0) {
                     KillTimer(hWnd, TIMER_MOVE);
@@ -593,7 +625,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 
-int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
+int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     LPTSTR lpCmdLine, int nCmdShow) {
     g_hInst = hInstance;
 
